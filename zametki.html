@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Заметки</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .switch {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .tab-btn.active {
+            background: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+
+        
+        .form {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            resize: none;
+            margin-bottom: 15px;
+        }
+
+        .colors {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .circle {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .selected {
+            border-color: #333;
+        }
+
+        .btn-add {
+            width: 100%;
+            padding: 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .card {
+            padding: 15px;
+            border-radius: 12px;
+            position: relative;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            border: 1px solid #eee;
+        }
+
+        .card-white { background: white; }
+        .card-yellow { background: #ffee54; }
+        .card-green { background: #82ff8c; }
+        .card-blue { background: #6af5ff; }
+
+        .date {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .card-actions {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .card-actions button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .btn-del { color: #ff5c5c; }
+        .btn-restore { color: #28a745; }
+
+        .trash-hint {
+            font-size: 12px;
+            color: #777;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <h2 style="text-align: center;">📝 Заметки 📝</h2>
+
+    <div class="switch">
+        <button id="btn-tab-notes" class="tab-btn active" onclick="switchTab('notes')">
+            Мои заметки (<span id="count-notes">0</span>)
+        </button>
+        <button id="btn-tab-trash" class="tab-btn" onclick="switchTab('trash')">
+             Корзина🗑 (<span id="count-trash">0</span>)
+        </button>
+    </div>
+
+
+    <div id="add-form" class="form">
+        <textarea id="note-input" placeholder="Напишите что-нибудь..."></textarea>
+        
+        <div class="colors">
+            <span>Цвет:</span>
+            <div class="circle selected card-white" onclick="pickColor('card-white', this)"></div>
+            <div class="circle card-yellow" onclick="pickColor('card-yellow', this)"></div>
+            <div class="circle card-green" onclick="pickColor('card-green', this)"></div>
+            <div class="circle card-blue" onclick="pickColor('card-blue', this)"></div>
+        </div>
+
+        <button class="btn-add" onclick="addNote()">Сохранить заметку</button>
+    </div>
+
+    
+    <div id="trash-info" class="trash-hint hidden">
+        Заметки в корзине хранятся 30 дней
+    </div>
+
+
+    <div id="notes-list" class="list"></div>
+
+<script>
+    // Память
+    let notes = JSON.parse(localStorage.getItem('notes_active')) || [];
+    let trash = JSON.parse(localStorage.getItem('notes_trash')) || [];
+
+    let currentTab = 'notes'; 
+    let activeColorClass = 'card-white';
+
+    //Автоочистка корзины через 30 дней
+    function cleanOldTrash() {
+        let thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        let now = Date.now();
+
+    
+        trash = trash.filter(item => (now - item.deletedAt) < thirtyDaysInMs);
+        save();
+    }
+
+    //Сохранение в LocalStorage
+    function save() {
+        localStorage.setItem('notes_active', JSON.stringify(notes));
+        localStorage.setItem('notes_trash', JSON.stringify(trash));
+        updateTabCounts();
+    }
+
+    //Обновление счетчиков на вкладках
+    function updateTabCounts() {
+        document.getElementById('count-notes').innerText = notes.length;
+        document.getElementById('count-trash').innerText = trash.length;
+    }
+
+    //Переключение между Заметками и Корзиной
+    function switchTab(tabName) {
+        currentTab = tabName;
+
+        let btnNotes = document.getElementById('btn-tab-notes');
+        let btnTrash = document.getElementById('btn-tab-trash');
+        let addForm = document.getElementById('add-form');
+        let trashInfo = document.getElementById('trash-info');
+
+        if (currentTab === 'notes') {
+            btnNotes.classList.add('active');
+            btnTrash.classList.remove('active');
+            addForm.classList.remove('hidden');
+            trashInfo.classList.add('hidden');
+        } else {
+            btnNotes.classList.remove('active');
+            btnTrash.classList.add('active');
+            addForm.classList.add('hidden');
+            trashInfo.classList.remove('hidden');
+        }
+
+        render();
+    }
+
+    //выбор цвета
+    function pickColor(className, element) {
+        activeColorClass = className;
+        let allCircles = document.querySelectorAll('.circle');
+        allCircles.forEach(c => c.classList.remove('selected'));
+        element.classList.add('selected');
+    }
+
+    //отрисовка на экране
+    function render() {
+        let list = document.getElementById('notes-list');
+        list.innerHTML = '';
+
+        if (currentTab === 'notes') {
+            notes.forEach(function(note, index) {
+                list.innerHTML += `
+                    <div class="card ${note.color}">
+                        <span class="date">${note.date}</span>
+                        <div>${note.text}</div>
+                        <div class="card-actions">
+                            <button class="btn-del" title="В корзину" onclick="moveToTrash(${index})">🗑</button>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            //корзина
+            if (trash.length === 0) {
+                list.innerHTML = '<p style="text-align:center; color:#999;">Корзина пуста</p>';
+                return;
+            }
+
+            trash.forEach(function(note, index) {
+                list.innerHTML += `
+                    <div class="card ${note.color}">
+                        <span class="date">Удалено: ${new Date(note.deletedAt).toLocaleDateString()}</span>
+                        <div>${note.text}</div>
+                        <div class="card-actions">
+                            <button class="btn-restore" title="Восстановить" onclick="restoreNote(${index})">↩️</button>
+                            <button class="btn-del" title="Удалить навсегда" onclick="deleteForever(${index})">✕</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+    }
+
+    //добавление новой заметки
+    function addNote() {
+        let input = document.getElementById('note-input');
+        if (input.value.trim() === '') {
+            alert('Напишите текст заметки!');
+            return;
+        }
+
+        let newNote = {
+            text: input.value,
+            color: activeColorClass,
+            date: new Date().toLocaleString()
+        };
+
+        notes.unshift(newNote);
+        save();
+        render();
+        input.value = '';
+    }
+
+    //Перемещение в корзину
+    function moveToTrash(index) {
+        let confirmAction = confirm('Точно переместить эту заметку в корзину?');
+        if (!confirmAction) return;
+
+       
+        let note = notes.splice(index, 1)[0];
+        
+        note.deletedAt = Date.now();
+
+        trash.unshift(note);
+
+        save();
+        render();
+    }
+
+    //восстановление заметки из корзины
+    function restoreNote(index) {
+        let note = trash.splice(index, 1)[0];
+        delete note.deletedAt; 
+
+        notes.unshift(note);
+        save();
+        render();
+    }
+
+    //Окончательное удаление из корзины
+    function deleteForever(index) {
+        let confirmAction = confirm('Удалить эту заметку навсегда без возможности восстановления?');
+        if (!confirmAction) return;
+
+        trash.splice(index, 1);
+        save();
+        render();
+    }
+
+    //старт
+    cleanOldTrash(); 
+    save();
+    render();
+</script>
+
+</body>
+</html>
